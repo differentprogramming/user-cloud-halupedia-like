@@ -359,87 +359,62 @@
             }
             
             if (targetTopic) {
-                sandbox.innerHTML = `<span class="loading-text">Consulting historical records for <strong>"${targetTopic}"</strong>... (Waiting for ${useLocal ? "Local AI" : "Gemini 2.5 Flash"})</span>`;
+                sandbox.innerHTML = `<h1>${targetTopic}</h1><span class="loading-text">Consulting historical records... (Waiting for ${useLocal ? "Local AI" : "Gemini 2.5 Flash"})</span>`;
             } else {
-                sandbox.innerHTML = `<span class="loading-text">Brainstorming a bizarre, non-existent topic...</span>`;
+                sandbox.innerHTML = `<span class="loading-text">Brainstorming a bizarre, non-existent topic... (Waiting for ${useLocal ? "Local AI" : "Gemini 2.5 Flash"})</span>`;
             }
-
-            let selectedTopic = targetTopic;
 
             try {
                 generationCount++;
+                const loreBuffer = buildLoreBuffer();
+                const articleSystemPrompt = `You are the sole author of Halupedia, an encyclopedia of things that do not exist. You write encyclopedia articles in a deadpan, matter-of-fact tone — the exact style of Wikipedia — about subjects that are completely ridiculous, absurd, or logically impossible. Do NOT output <thinking>, <thought>, or reasoning blocks.`;
+                let finalPrompt = "";
+                let generatedTitle = targetTopic; // Will be overwritten if targetTopic is empty
 
                 // =======================================================
-                // STAGE 1: Topic Generation (Only if no target provided)
+                // Unified Generation (Single API Call)
                 // =======================================================
-                if (!selectedTopic) {
-                    const titleSystemPrompt = `You are a creative brainstorming engine for Halupedia. Output EXACTLY ONE short title string. NO PREAMBLE. NO POSTAMBLE. NO CONVERSATIONAL TEXT. Do NOT say "Here is a title". Just output the raw title text. Do NOT output <thinking>, <thought>, or reasoning blocks.`;
-                    let titlePrompt = `Invent a brand new, formal encyclopedia topic title that is incredibly strange but historically authentic.`;
+                if (!targetTopic) {
+                    finalPrompt = `${loreBuffer}\n\nInvent a brand new, formal encyclopedia topic that is incredibly strange but historically authentic.\n\nCRITICAL RULES:\n1. The VERY FIRST LINE of your response MUST be the Title of the topic. No "Here is...", no bold tags. Just the raw title.\n2. The SECOND LINE MUST be blank.\n3. The REST of your response MUST be a 350-word encyclopedia entry for that topic.\n4. Emulate Wikipedia's tone perfectly.\n5. Use Wikitext double-brackets to link to 3 or 4 other invented, bizarre encyclopedia articles (e.g., "This was heavily regulated by [[The Ministry of Slight Breezes]].")\n6. End the article with a quotation from a fictional academic, starting the line with the > symbol.\n7. Do NOT output markdown code blocks, lists, or bullet points. Use simple paragraphs and headers (##).\n8. ABSOLUTELY NO INTERNAL REASONING. Start with the title immediately.`;
                     
                     if (previousTitles.length > 0) {
-                        titlePrompt += `\nCRITICAL: This title MUST be completely different from these previous topics: ${previousTitles.join(" | ")}.`;
+                        finalPrompt += `\n- The topic MUST be completely different from these previous topics: ${previousTitles.join(" | ")}.`;
                     }
-                    titlePrompt += `\nCRITICAL RULES:\n1. RESPOND WITH THE TITLE ONLY.\n2. Do NOT explain it.\n3. Do NOT provide a list.\n4. Output absolutely nothing else.`;
-
-                    let rawTitle = "";
-
-                    const titleStreamUpdater = (currentText) => {
-                        rawTitle = currentText;
-                        sandbox.innerHTML = `<span class="loading-text">Discovering Archive:</span><br><i>${currentText}</i>`;
-                    };
-
-                    if (useLocal) {
-                        await callLocalAPI(titlePrompt, titleSystemPrompt, 0.9, titleStreamUpdater);
-                    } else {
-                        await callGeminiAPI(titlePrompt, titleSystemPrompt, 0.9, 40, titleStreamUpdater);
+                } else {
+                    finalPrompt = `${loreBuffer}\n\nWrite a 350-word encyclopedia entry for the topic: ${targetTopic}.\n\nCRITICAL RULES:\n1. Emulate Wikipedia's tone perfectly.\n2. Use Wikitext double-brackets to link to 3 or 4 other invented, bizarre encyclopedia articles.\n3. End the article with a quotation from a fictional academic, starting the line with the > symbol.\n4. Do NOT output markdown code blocks, lists, or bullet points. Use simple paragraphs and headers (##).\n5. ABSOLUTELY NO INTERNAL REASONING. Do NOT output <thinking> tags. Start writing the article text immediately.`;
+                    
+                    if (browsingHistory.length > 0) {
+                        finalPrompt += `\n- Since the user clicked a link to arrive here, make sure this article naturally connects to the 'Currently Reading' topic in the lore buffer.`;
                     }
-                    
-                    const titleLines = rawTitle.split('\n').filter(line => line.trim().length > 0);
-                    let firstLine = titleLines[0] || "Unknown Topic";
-                    firstLine = firstLine.replace(/^(Title:|Topic:|\*\*Title:\*\*|Here is a title:|Sure!)\s*/i, ''); 
-                    selectedTopic = firstLine.replace(/["'#`\.*]/g, "").trim();
-                    
-                    previousTitles.push(selectedTopic);
-                }
-
-                // Initial UI setup before streaming the article
-                sandbox.innerHTML = `<h1>${selectedTopic}</h1><span class="loading-text">Drafting full encyclopedia entry...</span>`;
-
-                // =======================================================
-                // STAGE 2: Article Generation (Streaming)
-                // =======================================================
-                const loreBuffer = buildLoreBuffer();
-
-                const articleSystemPrompt = `You are the sole author of Halupedia, an encyclopedia of things that do not exist. You write encyclopedia articles in a deadpan, matter-of-fact tone — the exact style of Wikipedia — about subjects that are completely ridiculous, absurd, or logically impossible. Do NOT output <thinking>, <thought>, or reasoning blocks.`;
-                let finalPrompt = `${loreBuffer}
-
-Write a 350-word encyclopedia entry for the topic: ${selectedTopic}.
-
-CRITICAL RULES:
-1. Emulate Wikipedia's tone perfectly.
-2. Use Wikitext double-brackets to link to 3 or 4 other invented, bizarre encyclopedia articles (e.g., "This was heavily regulated by [[The Ministry of Slight Breezes]].")
-3. End the article with a quotation from a fictional academic, starting the line with the > symbol.
-4. Do NOT output markdown code blocks, lists, or bullet points. Use simple paragraphs and headers (##).
-5. ABSOLUTELY NO INTERNAL REASONING. Do NOT output <thinking>, <thought>, or <scratchpad> tags. Start writing the article text immediately.`;
-
-                if (generationCount > 1 && !targetTopic) {
-                    finalPrompt += `\n- Ensure the concepts and structure are completely different from previous articles.`;
-                } else if (targetTopic && browsingHistory.length > 0) {
-                    finalPrompt += `\n- Since the user clicked a link to arrive here, make sure this article naturally connects to the 'Currently Reading' topic in the lore buffer.`;
                 }
 
                 let rawArticleText = "";
 
-                // Stream Updater function - updates the UI as chunks arrive
+                // Stream Updater function - dynamically splits the first line into the Title if we are generating a random article
                 const streamUpdater = (currentText) => {
                     rawArticleText = currentText;
                     let cleanText = currentText.replace(/```(html|markdown)?/gi, '').replace(/```/g, '');
-                    let htmlContent = marked.parse(cleanText);
+                    
+                    let displayTitle = targetTopic;
+                    let displayBody = cleanText;
+
+                    // If we didn't provide a topic, the AI is generating it on line 1
+                    if (!targetTopic) {
+                        const lines = cleanText.split('\n');
+                        // Grab line 1, strip markdown/cruft
+                        displayTitle = (lines[0] || "").replace(/^(Title:|Topic:|\*\*Title:\*\*|Here is a title:|Sure!)\s*/i, '').replace(/["'#`\.*]/g, "").trim();
+                        // The rest is the body
+                        displayBody = lines.slice(1).join('\n').trim();
+                        generatedTitle = displayTitle; 
+                    }
+
+                    let htmlContent = marked.parse(displayBody || "...");
                     // Live-replace wiki links
                     htmlContent = htmlContent.replace(/\[\[(.*?)\]\]/g, `<a href="#" class="wiki-link" onclick="openWikiPage('$1'); return false;">$1</a>`);
-                    sandbox.innerHTML = `<h1>${selectedTopic}</h1>` + htmlContent;
+                    sandbox.innerHTML = `<h1>${displayTitle || "Discovering Archive..."}</h1>` + htmlContent;
                 };
 
+                // Trigger the Single Request
                 if (useLocal) {
                     await callLocalAPI(finalPrompt, articleSystemPrompt, 0.9, streamUpdater);
                 } else {
@@ -447,11 +422,20 @@ CRITICAL RULES:
                 }
 
                 // =======================================================
-                // STAGE 3: The Quote "Safety Net" & History Saving (Post-stream)
+                // Post-stream Processing & Quotes
                 // =======================================================
-                let cleanText = rawArticleText.replace(/```(html|markdown)?/gi, '').replace(/```/g, '');
-                cleanText = cleanText.replace(/([\.!?])\s*\n?\s*(>)/g, '$1\n\n$2');
-                let htmlContent = marked.parse(cleanText);
+                let finalCleanText = rawArticleText.replace(/```(html|markdown)?/gi, '').replace(/```/g, '');
+                let finalBody = finalCleanText;
+                
+                if (!targetTopic) {
+                    const lines = finalCleanText.split('\n');
+                    generatedTitle = (lines[0] || "").replace(/^(Title:|Topic:|\*\*Title:\*\*|Here is a title:|Sure!)\s*/i, '').replace(/["'#`\.*]/g, "").trim();
+                    finalBody = lines.slice(1).join('\n').trim();
+                    if(generatedTitle) previousTitles.push(generatedTitle);
+                }
+
+                finalBody = finalBody.replace(/([\.!?])\s*\n?\s*(>)/g, '$1\n\n$2');
+                let htmlContent = marked.parse(finalBody);
                 htmlContent = htmlContent.replace(/\[\[(.*?)\]\]/g, `<a href="#" class="wiki-link" onclick="openWikiPage('$1'); return false;">$1</a>`);
                 
                 if (!htmlContent.includes('<blockquote>')) {
@@ -460,11 +444,11 @@ CRITICAL RULES:
                     htmlContent = htmlContent.replace(/<\/blockquote>/g, '<cite>— Historical Records Office</cite></blockquote>');
                 }
                 
-                sandbox.innerHTML = `<h1>${selectedTopic}</h1>` + htmlContent;
+                sandbox.innerHTML = `<h1>${generatedTitle}</h1>` + htmlContent;
 
-                // Save to Browsing History for the next generation's Lore Buffer
-                let plainText = htmlContent.replace(/<[^>]+>/g, ''); // Strip HTML tags
-                browsingHistory.push({ title: selectedTopic, text: plainText });
+                // Save to Browsing History
+                let plainText = htmlContent.replace(/<[^>]+>/g, ''); 
+                browsingHistory.push({ title: generatedTitle, text: plainText });
 
             } catch (err) {
                 console.error(err);
