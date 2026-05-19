@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Halupedia Local Generator</title>
+    
+    <!-- Marked.js for robust Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            background-color: #f6f6f6;
+            color: #202124;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        h1.main-title { font-family: 'Georgia', serif; font-size: 2.2rem; margin-bottom: 5px; color: #000; }
+        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: bold; margin-bottom: 25px; font-size: 12px; }
+        .status-checking { background-color: #ffe0b2; color: #b78103; }
+        .status-ready { background-color: #c8e6c9; color: #256029; }
+        .status-error { background-color: #ffcdd2; color: #c62828; }
+        .action-area { margin-bottom: 30px; }
+        .generate-btn { padding: 14px 28px; font-size: 16px; background-color: #3c4043; color: white; border: 1px solid #3c4043; border-radius: 4px; cursor: pointer; font-weight: 500; transition: background 0.2s; }
+        .generate-btn:hover:not(:disabled) { background-color: #202124; }
+        .generate-btn:disabled { background-color: #cccccc; border-color: #cccccc; cursor: not-allowed; }
+        #wiki-sandbox { background-color: #fff; border: 1px solid #a2a9b1; padding: 30px 40px; min-height: 400px; line-height: 1.6; box-shadow: 0 1px 4px rgba(0,0,0,0.05); transition: background-color 0.3s, border-color 0.3s; }
+        #wiki-sandbox h1 { font-family: 'Georgia', serif; font-size: 1.8rem; border-bottom: 1px solid #a2a9b1; padding-bottom: 5px; margin-top: 0; margin-bottom: 20px; }
+        #wiki-sandbox h2, #wiki-sandbox h3 { font-family: 'Georgia', serif; font-size: 1.4rem; border-bottom: 1px solid #a2a9b1; padding-bottom: 3px; margin-top: 30px; margin-bottom: 15px; }
+        #wiki-sandbox p { margin-top: 0; margin-bottom: 1.2em; text-align: justify; }
+        #wiki-sandbox blockquote { background: #f8f9fa; border-left: 4px solid #eaecf0; margin: 15px 0; padding: 15px 20px; font-style: italic; }
+        #wiki-sandbox cite { display: block; font-size: 0.85rem; color: #54595d; margin-top: 8px; font-style: normal; }
+        .wiki-link { color: #0645ad; text-decoration: none; cursor: pointer; }
+        .wiki-link:hover { text-decoration: underline; }
+        .loading-text { color: #72777d; font-style: italic; }
+
+        @media (prefers-color-scheme: dark) {
+            body { background-color: #121212; color: #e0e0e0; }
+            h1.main-title { color: #ffffff; }
+            #wiki-sandbox { background-color: #1e1e1e; border-color: #333; box-shadow: none; }
+            #wiki-sandbox h1, #wiki-sandbox h2, #wiki-sandbox h3 { border-bottom-color: #333; }
+            #wiki-sandbox blockquote { background: #2a2a2a; border-left-color: #444; }
+            #wiki-sandbox cite { color: #a0a0a0; }
+            .wiki-link { color: #8ab4f8; }
+            .generate-btn { background-color: #4CAF50; color: #fff; border-color: #4CAF50; }
+            .generate-btn:hover:not(:disabled) { background-color: #45a049; }
+            .generate-btn:disabled { background-color: #333; border-color: #333; color: #666; }
+            .status-checking { background-color: #4a3b1c; color: #ffca28; }
+            .status-ready { background-color: #1b3a20; color: #66bb6a; }
+            .status-error { background-color: #4a1c1c; color: #ef5350; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1 class="main-title">Halupedia Local Generator</h1>
+    <div id="status" class="status-badge status-checking">Checking Gemini Nano status...</div>
+
+    <div class="action-area">
+        <button id="submit-btn" class="generate-btn" disabled>Generate Random Article</button>
+    </div>
+
+    <div id="wiki-sandbox">Click the button above to have the AI invent an entirely new topic from scratch...</div>
+
+    <script>
+        const statusBadge = document.getElementById('status');
+        const submitBtn = document.getElementById('submit-btn');
+        const sandbox = document.getElementById('wiki-sandbox');
+
+        let titleSession = null;
+        let articleSession = null;
+        let generationCount = 0;
+        let previousTitles = [];
+        
+        // Track the user's traversal path for context anchoring
+        let browsingHistory = []; 
+
+        const massiveDictionary = [
+            "heuristic", "epistemology", "taxonomy", "pedagogy", "nomenclature", "codicil", "injunction",
+            "jurisprudence", "fiduciary", "affidavit", "notary", "dossier", "chronometer", "parallax", 
+            "isotope", "cyclotron", "mycelium", "asymptote", "valence", "runcible", "vorpal", "snark", 
+            "bandersnatch", "slithy", "defenestration", "callipygian", "spatula", "lint", "doorknob", 
+            "tupperware", "thimble", "grommet", "plinth", "flange", "gossamer", "twilight", "resonance", 
+            "ephemeral", "petrichor", "somnambulist", "obfuscation", "hermetic", "bifurcation", "paradigm",
+            "syndicate", "tide", "bureaucracy", "algorithm", "frequency", "protocol", "chamber", "echo",
+            "parasol", "ledger", "fungus", "friction", "monolith", "nectar", "zinc", "cortex", "mercury",
+            "ballast", "velvet", "kinetic", "moss", "copper", "whisper", "geometry", "dust", "porcelain",
+            "mechanism", "obsidian", "membrane", "catalog", "residue", "fossil", "orchestra", "subpoena",
+            "bismuth", "cartography", "diorama", "esoteric", "filibuster", "gallium", "halcyon", "index",
+            "jargon", "kiln", "labyrinth", "macabre", "nebula", "oligarchy", "pontificate", "quandary",
+            "rubric", "stipulation", "tessellation", "ubiquitous", "vernacular", "wainscoting", "xenon",
+            "zephyr", "abattoir", "bovine", "credenza", "dirigible", "ectoplasm", "facsimile", "gazebo",
+            "haberdashery", "igloo", "jamboree", "knell", "lozenge", "masticate", "nougat", "obelisk",
+            "pantaloon", "quarantine", "rhombus", "scaffold", "turnip", "ulna", "vortex", "weevil",
+            "xylophone", "yurt", "zeppelin", "actuary", "bailiff", "comptroller", "dowager", "elector",
+            "fletcher", "grazier", "habeas", "incumbent", "jurist", "kleptocrat", "litigant", "magistrate"
+        ];
+
+        function isDesktopChrome() {
+            const userAgent = navigator.userAgent;
+            const isChrome = /Chrome/.test(userAgent) && /Google Inc/.test(navigator.vendor);
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+            return isChrome && !isMobile;
+        }
+
+        async function checkAiAvailability() {
+            if (!isDesktopChrome()) {
+                updateStatus("Unsupported Browser/Device", "status-error");
+                sandbox.innerHTML = `<h2 style="margin-top:0;">Browser Not Supported</h2><p>This experimental AI generator currently only works on <strong>Desktop versions of Google Chrome</strong>.</p>`;
+                return;
+            }
+
+            if (typeof LanguageModel === 'undefined') {
+                updateStatus("API Missing - See Instructions", "status-error");
+                sandbox.innerHTML = `<h2 style="margin-top:0;">AI Not Detected</h2><p>Chrome's built-in AI is not enabled.</p>`;
+                return;
+            }
+
+            try {
+                const capabilities = await LanguageModel.availability({
+                    expectedInputs: [{ type: "text", languages: ["en"] }],
+                    expectedOutputs: [{ type: "text", languages: ["en"] }]
+                });
+                
+                if (capabilities === 'available') {
+                    updateStatus("Gemini Nano Active (Wiki Traversal Mode)", "status-ready");
+                    submitBtn.disabled = false;
+                } else {
+                    updateStatus(`Status: Model unavailable (${capabilities})`, "status-error");
+                }
+            } catch (err) {
+                updateStatus(`Validation failed: ${err.message}`, "status-error");
+            }
+        }
+
+        function updateStatus(text, className) {
+            statusBadge.innerText = text;
+            statusBadge.className = `status-badge ${className}`;
+        }
+
+        async function initOrResetSessions(forceReset = false) {
+            if (forceReset) {
+                if (titleSession) titleSession.destroy();
+                if (articleSession) articleSession.destroy();
+                titleSession = null;
+                articleSession = null;
+                generationCount = 0;
+                previousTitles = [];
+            }
+
+            if (!titleSession) {
+                titleSession = await LanguageModel.create({
+                    expectedInputs: [{ type: "text", languages: ["en"] }],
+                    expectedOutputs: [{ type: "text", languages: ["en"] }],
+                    temperature: 0.9, 
+                    topK: 10,
+                    systemPrompt: `You are a creative brainstorming engine for Halupedia. Output ONLY ONE short title string for a fictional wiki article. It must sound highly bureaucratic, academic, silly, or petty. Do NOT use markdown headers, punctuation, or backticks.`
+                });
+            }
+
+            if (!articleSession) {
+                articleSession = await LanguageModel.create({
+                    expectedInputs: [{ type: "text", languages: ["en"] }],
+                    expectedOutputs: [{ type: "text", languages: ["en"] }],
+                    temperature: 0.8,
+                    topK: 5,
+                    systemPrompt: `You are the sole author of Halupedia, an encyclopedia of things that do not exist. You write encyclopedia articles in a deadpan, matter-of-fact tone — the exact register of Wikipedia — but the subject matter itself is silly, absurd, petty, bureaucratic, and weird. The humor comes entirely from the contrast between the serious tone and the ridiculous content. You never wink at the reader. You never acknowledge that anything is funny or fictional. Everything is reported as though it is completely normal and well-documented. Do NOT greet the reader, do NOT introduce yourself, and do NOT add explanatory notes or meta commentary at the end. Proceed directly to the entry execution.`
+                });
+            }
+        }
+
+        function buildLoreBuffer() {
+            if (browsingHistory.length === 0) return "";
+            
+            const currentPage = browsingHistory[browsingHistory.length - 1];
+            const previousPage = browsingHistory.length > 1 ? browsingHistory[browsingHistory.length - 2] : null;
+
+            let lore = `\nFOR WORLD-BUILDING CONSISTENCY, base this new article on the user's recent reading history:\n`;
+            lore += `\nCurrently Reading (MUST relate to this): \nTITLE: ${currentPage.title}\nTEXT: ${currentPage.text}\n`;
+            
+            if (previousPage) {
+                lore += `\nPreviously Read (Thematic background): \nTITLE: ${previousPage.title}\nTEXT: ${previousPage.text}\n`;
+            }
+
+            return lore;
+        }
+
+        // Exposed globally so generated links can call it
+        window.openWikiPage = async function(targetTopic) {
+            generateArticle(targetTopic);
+        };
+
+        async function generateArticle(targetTopic = "") {
+            submitBtn.disabled = true;
+            
+            if (targetTopic) {
+                sandbox.innerHTML = `<span class="loading-text">Consulting historical records for <strong>"${targetTopic}"</strong>...</span>`;
+            } else {
+                sandbox.innerHTML = `<span class="loading-text">Brainstorming a bizarre, non-existent topic...</span>`;
+            }
+
+            let selectedTopic = targetTopic;
+
+            try {
+                await initOrResetSessions();
+                generationCount++;
+
+                // =======================================================
+                // STAGE 1: Topic Generation (Only if no target provided)
+                // =======================================================
+                if (!selectedTopic) {
+                    const shuffledNoise = massiveDictionary.sort(() => 0.5 - Math.random());
+                    const entropyWords = shuffledNoise.slice(0, 12).join(", ");
+                    const randomSeed = Math.floor(Math.random() * 100000);
+
+                    let titlePrompt = `[SEMANTIC ENTROPY BUFFER: ${entropyWords}]\nInvent a brand new, formal encyclopedia topic title. Use the entropy buffer for abstract inspiration to make it utterly unique. Random variation hash token: ${randomSeed}.`;
+                    
+                    if (previousTitles.length > 0) {
+                        titlePrompt += `\nCRITICAL: This title MUST be completely different from these previous topics: ${previousTitles.join(" | ")}.`;
+                    }
+                    titlePrompt += `\nRESPOND WITH THE TITLE ONLY. No explanations.`;
+
+                    const rawTitle = await titleSession.prompt(titlePrompt);
+                    
+                    const titleLines = rawTitle.split('\n').filter(line => line.trim().length > 0);
+                    let firstLine = titleLines[0] || "Unknown Topic";
+                    firstLine = firstLine.replace(/^(Title:|Topic:|\*\*Title:\*\*)\s*/i, ''); 
+                    selectedTopic = firstLine.replace(/["'#`\.*]/g, "").trim();
+                    
+                    previousTitles.push(selectedTopic);
+                    sandbox.innerHTML = `<span class="loading-text">Discovered Archive: <strong>"${selectedTopic}"</strong>.<br>Consulting historical records...</span>`;
+                }
+
+                // =======================================================
+                // STAGE 2: Article Generation
+                // =======================================================
+                const loreBuffer = buildLoreBuffer();
+
+                let finalPrompt = `${loreBuffer}
+
+Write a 350-word encyclopedia entry for the topic: ${selectedTopic}.
+
+CRITICAL RULES:
+1. Emulate Wikipedia's tone perfectly.
+2. Use Wikitext double-brackets to link to 3 or 4 other invented, bizarre encyclopedia articles (e.g., "This was heavily regulated by [[The Ministry of Slight Breezes]].")
+3. End the article with a quotation from a fictional academic, starting the line with the > symbol.
+4. Do NOT output markdown code blocks, lists, or bullet points. Use simple paragraphs and headers (##).`;
+
+                if (generationCount > 1 && !targetTopic) {
+                    finalPrompt += `\n- Ensure the concepts and structure are completely different from previous articles.`;
+                } else if (targetTopic && browsingHistory.length > 0) {
+                    finalPrompt += `\n- Since the user clicked a link to arrive here, make sure this article naturally connects to the 'Currently Reading' topic in the lore buffer.`;
+                }
+
+                const stream = articleSession.promptStreaming(finalPrompt);
+                let textBuffer = "";
+                let htmlContent = "";
+
+                for await (const chunk of stream) {
+                    textBuffer += chunk;
+                    let cleanText = textBuffer.replace(/```(html|markdown)?/gi, '').replace(/```/g, '');
+                    cleanText = cleanText.replace(/([\.!?])\s*\n?\s*(>)/g, '$1\n\n$2');
+                    
+                    htmlContent = marked.parse(cleanText);
+                    
+                    // Turn AI's [[Funny Topic]] into a clickable link
+                    htmlContent = htmlContent.replace(/\[\[(.*?)\]\]/g, `<a href="#" class="wiki-link" onclick="openWikiPage('$1'); return false;">$1</a>`);
+                    
+                    sandbox.innerHTML = `<h1>${selectedTopic}</h1>` + htmlContent;
+                }
+
+                // =======================================================
+                // STAGE 3: The Quote "Safety Net" & History Saving
+                // =======================================================
+                if (!htmlContent.includes('<blockquote>')) {
+                    htmlContent = htmlContent.replace(/<p>(.*?)<\/p>\s*$/, '<blockquote>$1<cite>— Historical Records Office</cite></blockquote>');
+                } else {
+                    htmlContent = htmlContent.replace(/<\/blockquote>/g, '<cite>— Historical Records Office</cite></blockquote>');
+                }
+                sandbox.innerHTML = `<h1>${selectedTopic}</h1>` + htmlContent;
+
+                // Save to Browsing History for the next generation's Lore Buffer
+                let plainText = htmlContent.replace(/<[^>]+>/g, ''); // Strip HTML tags
+                browsingHistory.push({ title: selectedTopic, text: plainText });
+
+            } catch (err) {
+                console.error(err);
+                if (err.message.includes("quota") || err.message.includes("token") || err.message.includes("context") || err.message.includes("limit")) {
+                    sandbox.innerHTML = `<span class="loading-text" style="color:#b78103;">AI Memory full. Wiping historical archives and resetting... please click Generate again.</span>`;
+                    await initOrResetSessions(true);
+                } else {
+                    sandbox.innerHTML = `<span style="color:red;">Generation error: ${err.message}</span>`;
+                }
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
+        submitBtn.addEventListener('click', () => generateArticle(""));
+        window.addEventListener('DOMContentLoaded', checkAiAvailability);
+    </script>
+</body>
+</html>
