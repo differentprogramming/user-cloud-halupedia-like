@@ -373,13 +373,13 @@
                 // STAGE 1: Topic Generation (Only if no target provided)
                 // =======================================================
                 if (!selectedTopic) {
-                    const titleSystemPrompt = `You are a creative brainstorming engine for Halupedia. Output ONLY ONE short title string for a fictional wiki article. It must sound highly bureaucratic, academic, or absurd. Do NOT output <thinking>, <thought>, or reasoning blocks.`;
+                    const titleSystemPrompt = `You are a creative brainstorming engine for Halupedia. Output EXACTLY ONE short title string. NO PREAMBLE. NO POSTAMBLE. NO CONVERSATIONAL TEXT. Do NOT say "Here is a title". Just output the raw title text. Do NOT output <thinking>, <thought>, or reasoning blocks.`;
                     let titlePrompt = `Invent a brand new, formal encyclopedia topic title that is incredibly strange but historically authentic.`;
                     
                     if (previousTitles.length > 0) {
                         titlePrompt += `\nCRITICAL: This title MUST be completely different from these previous topics: ${previousTitles.join(" | ")}.`;
                     }
-                    titlePrompt += `\nRESPOND WITH THE TITLE ONLY. No explanations.`;
+                    titlePrompt += `\nCRITICAL RULES:\n1. RESPOND WITH THE TITLE ONLY.\n2. Do NOT explain it.\n3. Do NOT provide a list.\n4. Output absolutely nothing else.`;
 
                     let rawTitle;
                     if (useLocal) {
@@ -390,7 +390,7 @@
                     
                     const titleLines = rawTitle.split('\n').filter(line => line.trim().length > 0);
                     let firstLine = titleLines[0] || "Unknown Topic";
-                    firstLine = firstLine.replace(/^(Title:|Topic:|\*\*Title:\*\*)\s*/i, ''); 
+                    firstLine = firstLine.replace(/^(Title:|Topic:|\*\*Title:\*\*|Here is a title:|Sure!)\s*/i, ''); 
                     selectedTopic = firstLine.replace(/["'#`\.*]/g, "").trim();
                     
                     previousTitles.push(selectedTopic);
