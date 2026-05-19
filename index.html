@@ -103,13 +103,18 @@
     <div class="api-key-container" id="local-api-container">
         <label for="local-url-input" style="font-weight: bold;">Local API URL</label>
         <br>
-        <span style="font-size: 12px; color: #666;">Default for Jan is usually <code>http://127.0.0.1:1337/v1/chat/completions</code></span>
-        <input type="text" id="local-url-input" class="api-key-input" value="http://127.0.0.1:1337/v1/chat/completions">
+        <span style="font-size: 12px; color: #666;">e.g., <code>http://127.0.0.1:3000/api/chat/completions</code> (Open WebUI)</span>
+        <input type="text" id="local-url-input" class="api-key-input" value="http://127.0.0.1:3000/api/chat/completions">
         <br><br>
         <label for="local-model-input" style="font-weight: bold;">Model Name</label>
         <br>
-        <span style="font-size: 12px; color: #666;">Enter the exact model name downloaded in Jan/Open WebUI.</span>
+        <span style="font-size: 12px; color: #666;">Enter the exact model name.</span>
         <input type="text" id="local-model-input" class="api-key-input" placeholder="e.g. llama3">
+        <br><br>
+        <label for="local-api-key-input" style="font-weight: bold;">Local API Key (Optional)</label>
+        <br>
+        <span style="font-size: 12px; color: #666;">Required if routing through Open WebUI. Leave blank for direct llama-server.</span>
+        <input type="password" id="local-api-key-input" class="api-key-input" placeholder="Bearer token...">
     </div>
 
     <div class="action-area">
@@ -126,6 +131,7 @@
         const apiKeyInput = document.getElementById('api-key-input');
         const localUrlInput = document.getElementById('local-url-input');
         const localModelInput = document.getElementById('local-model-input');
+        const localApiKeyInput = document.getElementById('local-api-key-input');
 
         const submitBtn = document.getElementById('submit-btn');
         const sandbox = document.getElementById('wiki-sandbox');
@@ -144,6 +150,9 @@
 
             const savedLocalModel = localStorage.getItem('halupedia_local_model');
             if (savedLocalModel) localModelInput.value = savedLocalModel;
+            
+            const savedLocalApiKey = localStorage.getItem('halupedia_local_api_key');
+            if (savedLocalApiKey) localApiKeyInput.value = savedLocalApiKey;
 
             const isLocal = localStorage.getItem('halupedia_use_local') === 'true';
             useLocalToggle.checked = isLocal;
@@ -202,10 +211,13 @@
         async function callLocalAPI(prompt, systemPrompt, temperature) {
             const url = localUrlInput.value.trim();
             const model = localModelInput.value.trim() || "local-model";
+            const localApiKey = localApiKeyInput.value.trim();
+            
             if (!url) throw new Error("Please enter your Local API URL.");
 
             localStorage.setItem('halupedia_local_url', url);
             localStorage.setItem('halupedia_local_model', model);
+            localStorage.setItem('halupedia_local_api_key', localApiKey);
 
             const requestBody = {
                 model: model,
@@ -215,10 +227,15 @@
                 ],
                 temperature: temperature
             };
+            
+            const headers = { 'Content-Type': 'application/json' };
+            if (localApiKey) {
+                headers['Authorization'] = `Bearer ${localApiKey}`;
+            }
 
             const response = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headers,
                 body: JSON.stringify(requestBody)
             });
 
