@@ -361,7 +361,7 @@
             if (targetTopic) {
                 sandbox.innerHTML = `<span class="loading-text">Consulting historical records for <strong>"${targetTopic}"</strong>... (Waiting for ${useLocal ? "Local AI" : "Gemini 2.5 Flash"})</span>`;
             } else {
-                sandbox.innerHTML = `<span class="loading-text">Brainstorming a bizarre, non-existent topic... (Waiting for ${useLocal ? "Local AI" : "Gemini 2.5 Flash"})</span>`;
+                sandbox.innerHTML = `<span class="loading-text">Brainstorming a bizarre, non-existent topic...</span>`;
             }
 
             let selectedTopic = targetTopic;
@@ -381,11 +381,17 @@
                     }
                     titlePrompt += `\nCRITICAL RULES:\n1. RESPOND WITH THE TITLE ONLY.\n2. Do NOT explain it.\n3. Do NOT provide a list.\n4. Output absolutely nothing else.`;
 
-                    let rawTitle;
+                    let rawTitle = "";
+
+                    const titleStreamUpdater = (currentText) => {
+                        rawTitle = currentText;
+                        sandbox.innerHTML = `<span class="loading-text">Discovering Archive:</span><br><i>${currentText}</i>`;
+                    };
+
                     if (useLocal) {
-                        rawTitle = await callLocalAPI(titlePrompt, titleSystemPrompt, 0.9); // No stream for title
+                        await callLocalAPI(titlePrompt, titleSystemPrompt, 0.9, titleStreamUpdater);
                     } else {
-                        rawTitle = await callGeminiAPI(titlePrompt, titleSystemPrompt, 0.9, 40);
+                        await callGeminiAPI(titlePrompt, titleSystemPrompt, 0.9, 40, titleStreamUpdater);
                     }
                     
                     const titleLines = rawTitle.split('\n').filter(line => line.trim().length > 0);
