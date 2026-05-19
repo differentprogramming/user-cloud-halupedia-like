@@ -94,18 +94,6 @@
         let previousTitles = [];
         let browsingHistory = []; 
 
-        const massiveDictionary = [
-            "heuristic", "epistemology", "taxonomy", "pedagogy", "nomenclature", "codicil", "injunction",
-            "jurisprudence", "fiduciary", "affidavit", "notary", "dossier", "chronometer", "parallax", 
-            "isotope", "cyclotron", "mycelium", "asymptote", "valence", "runcible", "vorpal", "snark", 
-            "bandersnatch", "slithy", "defenestration", "callipygian", "spatula", "lint", "doorknob", 
-            "tupperware", "thimble", "grommet", "plinth", "flange", "gossamer", "twilight", "resonance", 
-            "ephemeral", "petrichor", "somnambulist", "obfuscation", "hermetic", "bifurcation", "paradigm",
-            "syndicate", "tide", "bureaucracy", "algorithm", "frequency", "protocol", "chamber", "echo",
-            "Baron Munchausen", "Brigadier General Jack D. Ripper", "Dr. Strangelove", "Zero Mostel", 
-            "Gene Wilder", "The Hunting of the Snark", "A. A. Milne", "Now We Are Six"
-        ];
-
         // Load saved API key on startup
         window.addEventListener('DOMContentLoaded', () => {
             const savedKey = localStorage.getItem('halupedia_api_key');
@@ -186,11 +174,8 @@
                 // STAGE 1: Topic Generation (Only if no target provided)
                 // =======================================================
                 if (!selectedTopic) {
-                    const shuffledNoise = massiveDictionary.sort(() => 0.5 - Math.random());
-                    const entropyWords = shuffledNoise.slice(0, 12).join(", ");
-
                     const titleSystemPrompt = `You are a creative brainstorming engine for Halupedia. Output ONLY ONE short title string for a fictional wiki article. It must sound highly bureaucratic, academic, or absurd.`;
-                    let titlePrompt = `[SEMANTIC ENTROPY BUFFER: ${entropyWords}]\nInvent a brand new, formal encyclopedia topic title. Use the entropy buffer for abstract inspiration to make it sound incredibly strange but historically authentic.`;
+                    let titlePrompt = `Invent a brand new, formal encyclopedia topic title that is incredibly strange but historically authentic.`;
                     
                     if (previousTitles.length > 0) {
                         titlePrompt += `\nCRITICAL: This title MUST be completely different from these previous topics: ${previousTitles.join(" | ")}.`;
