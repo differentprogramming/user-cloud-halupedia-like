@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User-cloud Halupedia Local Generator</title>
+    <title>User-cloud Halupedia Generator</title>
     
     <!-- Marked.js for robust Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -19,14 +19,29 @@
             transition: background-color 0.3s, color 0.3s;
         }
         h1.main-title { font-family: 'Georgia', serif; font-size: 2.2rem; margin-bottom: 5px; color: #000; }
-        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: bold; margin-bottom: 25px; font-size: 12px; }
-        .status-checking { background-color: #ffe0b2; color: #b78103; }
-        .status-ready { background-color: #c8e6c9; color: #256029; }
-        .status-error { background-color: #ffcdd2; color: #c62828; }
+        
+        .api-key-container { 
+            margin-bottom: 25px; 
+            background: #e8f0fe; 
+            padding: 15px; 
+            border-radius: 6px; 
+            border: 1px solid #d2e3fc; 
+        }
+        .api-key-input { 
+            width: 100%; 
+            padding: 10px; 
+            margin-top: 8px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            box-sizing: border-box; 
+            font-family: monospace;
+        }
+
         .action-area { margin-bottom: 30px; }
-        .generate-btn { padding: 14px 28px; font-size: 16px; background-color: #3c4043; color: white; border: 1px solid #3c4043; border-radius: 4px; cursor: pointer; font-weight: 500; transition: background 0.2s; }
+        .generate-btn { padding: 14px 28px; font-size: 16px; background-color: #3c4043; color: white; border: 1px solid #3c4043; border-radius: 4px; cursor: pointer; font-weight: 500; transition: background-color 0.2s; }
         .generate-btn:hover:not(:disabled) { background-color: #202124; }
         .generate-btn:disabled { background-color: #cccccc; border-color: #cccccc; cursor: not-allowed; }
+        
         #wiki-sandbox { background-color: #fff; border: 1px solid #a2a9b1; padding: 30px 40px; min-height: 400px; line-height: 1.6; box-shadow: 0 1px 4px rgba(0,0,0,0.05); transition: background-color 0.3s, border-color 0.3s; }
         #wiki-sandbox h1 { font-family: 'Georgia', serif; font-size: 1.8rem; border-bottom: 1px solid #a2a9b1; padding-bottom: 5px; margin-top: 0; margin-bottom: 20px; }
         #wiki-sandbox h2, #wiki-sandbox h3 { font-family: 'Georgia', serif; font-size: 1.4rem; border-bottom: 1px solid #a2a9b1; padding-bottom: 3px; margin-top: 30px; margin-bottom: 15px; }
@@ -40,6 +55,8 @@
         @media (prefers-color-scheme: dark) {
             body { background-color: #121212; color: #e0e0e0; }
             h1.main-title { color: #ffffff; }
+            .api-key-container { background: #1e2532; border-color: #3b4b6b; }
+            .api-key-input { background: #202124; color: #fff; border-color: #555; }
             #wiki-sandbox { background-color: #1e1e1e; border-color: #333; box-shadow: none; }
             #wiki-sandbox h1, #wiki-sandbox h2, #wiki-sandbox h3 { border-bottom-color: #333; }
             #wiki-sandbox blockquote { background: #2a2a2a; border-left-color: #444; }
@@ -48,34 +65,33 @@
             .generate-btn { background-color: #4CAF50; color: #fff; border-color: #4CAF50; }
             .generate-btn:hover:not(:disabled) { background-color: #45a049; }
             .generate-btn:disabled { background-color: #333; border-color: #333; color: #666; }
-            .status-checking { background-color: #4a3b1c; color: #ffca28; }
-            .status-ready { background-color: #1b3a20; color: #66bb6a; }
-            .status-error { background-color: #4a1c1c; color: #ef5350; }
         }
     </style>
 </head>
 <body>
 
-    <h1 class="main-title">User-cloud Halupedia Local Generator</h1>
-    <div id="status" class="status-badge status-checking">Checking Gemini Nano status...</div>
+    <h1 class="main-title">User-cloud Halupedia Generator</h1>
+    
+    <div class="api-key-container">
+        <label for="api-key-input" style="font-weight: bold;">Google AI Studio API Key</label>
+        <br>
+        <span style="font-size: 12px; color: #666;">Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a>. Stored locally in your browser.</span>
+        <input type="password" id="api-key-input" class="api-key-input" placeholder="AIzaSy...">
+    </div>
 
     <div class="action-area">
-        <button id="submit-btn" class="generate-btn" disabled>Generate Random Article</button>
+        <button id="submit-btn" class="generate-btn">Generate Random Article</button>
     </div>
 
     <div id="wiki-sandbox">Click the button above to have the AI invent an entirely new topic from scratch...</div>
 
     <script>
-        const statusBadge = document.getElementById('status');
+        const apiKeyInput = document.getElementById('api-key-input');
         const submitBtn = document.getElementById('submit-btn');
         const sandbox = document.getElementById('wiki-sandbox');
 
-        let titleSession = null;
-        let articleSession = null;
         let generationCount = 0;
         let previousTitles = [];
-        
-        // Track the user's traversal path for context anchoring
         let browsingHistory = []; 
 
         const massiveDictionary = [
@@ -86,90 +102,44 @@
             "tupperware", "thimble", "grommet", "plinth", "flange", "gossamer", "twilight", "resonance", 
             "ephemeral", "petrichor", "somnambulist", "obfuscation", "hermetic", "bifurcation", "paradigm",
             "syndicate", "tide", "bureaucracy", "algorithm", "frequency", "protocol", "chamber", "echo",
-            "parasol", "ledger", "fungus", "friction", "monolith", "nectar", "zinc", "cortex", "mercury",
-            "ballast", "velvet", "kinetic", "moss", "copper", "whisper", "geometry", "dust", "porcelain",
-            "mechanism", "obsidian", "membrane", "catalog", "residue", "fossil", "orchestra", "subpoena",
-            "bismuth", "cartography", "diorama", "esoteric", "filibuster", "gallium", "halcyon", "index",
-            "jargon", "kiln", "labyrinth", "macabre", "nebula", "oligarchy", "pontificate", "quandary",
-            "rubric", "stipulation", "tessellation", "ubiquitous", "vernacular", "wainscoting", "xenon",
-            "zephyr", "abattoir", "bovine", "credenza", "dirigible", "ectoplasm", "facsimile", "gazebo",
-            "haberdashery", "igloo", "jamboree", "knell", "lozenge", "masticate", "nougat", "obelisk",
-            "pantaloon", "quarantine", "rhombus", "scaffold", "turnip", "ulna", "vortex", "weevil",
-            "xylophone", "yurt", "zeppelin", "actuary", "bailiff", "comptroller", "dowager", "elector",
-            "fletcher", "grazier", "habeas", "incumbent", "jurist", "kleptocrat", "litigant", "magistrate"
+            "Baron Munchausen", "Brigadier General Jack D. Ripper", "Dr. Strangelove", "Zero Mostel", 
+            "Gene Wilder", "The Hunting of the Snark", "A. A. Milne", "Now We Are Six"
         ];
 
-        function isDesktopChrome() {
-            const userAgent = navigator.userAgent;
-            const isChrome = /Chrome/.test(userAgent) && /Google Inc/.test(navigator.vendor);
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-            return isChrome && !isMobile;
-        }
+        // Load saved API key on startup
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('halupedia_api_key');
+            if (savedKey) apiKeyInput.value = savedKey;
+        });
 
-        async function checkAiAvailability() {
-            if (!isDesktopChrome()) {
-                updateStatus("Unsupported Browser/Device", "status-error");
-                sandbox.innerHTML = `<h2 style="margin-top:0;">Browser Not Supported</h2><p>This experimental AI generator currently only works on <strong>Desktop versions of Google Chrome</strong>.</p>`;
-                return;
+        // Wrapper function to call Gemini via REST API
+        async function callGeminiAPI(prompt, systemPrompt, temperature, topK) {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) throw new Error("Please enter a Google AI Studio API Key.");
+            
+            // Save key locally
+            localStorage.setItem('halupedia_api_key', apiKey);
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+            const requestBody = {
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                generationConfig: { temperature: temperature, topK: topK }
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error?.message || "API Request Failed");
             }
 
-            if (typeof LanguageModel === 'undefined') {
-                updateStatus("API Missing - See Instructions", "status-error");
-                sandbox.innerHTML = `<h2 style="margin-top:0;">AI Not Detected</h2><p>Chrome's built-in AI is not enabled.</p>`;
-                return;
-            }
-
-            try {
-                const capabilities = await LanguageModel.availability({
-                    expectedInputs: [{ type: "text", languages: ["en"] }],
-                    expectedOutputs: [{ type: "text", languages: ["en"] }]
-                });
-                
-                if (capabilities === 'available') {
-                    updateStatus("Gemini Nano Active (Wiki Traversal Mode)", "status-ready");
-                    submitBtn.disabled = false;
-                } else {
-                    updateStatus(`Status: Model unavailable (${capabilities})`, "status-error");
-                }
-            } catch (err) {
-                updateStatus(`Validation failed: ${err.message}`, "status-error");
-            }
-        }
-
-        function updateStatus(text, className) {
-            statusBadge.innerText = text;
-            statusBadge.className = `status-badge ${className}`;
-        }
-
-        async function initOrResetSessions(forceReset = false) {
-            if (forceReset) {
-                if (titleSession) titleSession.destroy();
-                if (articleSession) articleSession.destroy();
-                titleSession = null;
-                articleSession = null;
-                generationCount = 0;
-                previousTitles = [];
-            }
-
-            if (!titleSession) {
-                titleSession = await LanguageModel.create({
-                    expectedInputs: [{ type: "text", languages: ["en"] }],
-                    expectedOutputs: [{ type: "text", languages: ["en"] }],
-                    temperature: 0.9, 
-                    topK: 10,
-                    systemPrompt: `You are a creative brainstorming engine for Halupedia. Output ONLY ONE short title string for a fictional wiki article. It must sound highly bureaucratic, academic, silly, or petty. Do NOT use markdown headers, punctuation, or backticks.`
-                });
-            }
-
-            if (!articleSession) {
-                articleSession = await LanguageModel.create({
-                    expectedInputs: [{ type: "text", languages: ["en"] }],
-                    expectedOutputs: [{ type: "text", languages: ["en"] }],
-                    temperature: 0.8,
-                    topK: 5,
-                    systemPrompt: `You are the sole author of Halupedia, an encyclopedia of things that do not exist. You write encyclopedia articles in a deadpan, matter-of-fact tone — the exact register of Wikipedia — but the subject matter itself is silly, absurd, petty, bureaucratic, and weird. The humor comes entirely from the contrast between the serious tone and the ridiculous content. You never wink at the reader. You never acknowledge that anything is funny or fictional. Everything is reported as though it is completely normal and well-documented. Do NOT greet the reader, do NOT introduce yourself, and do NOT add explanatory notes or meta commentary at the end. Proceed directly to the entry execution.`
-                });
-            }
+            const data = await response.json();
+            return data.candidates[0].content.parts[0].text;
         }
 
         function buildLoreBuffer() {
@@ -188,7 +158,6 @@
             return lore;
         }
 
-        // Exposed globally so generated links can call it
         window.openWikiPage = async function(targetTopic) {
             generateArticle(targetTopic);
         };
@@ -196,16 +165,21 @@
         async function generateArticle(targetTopic = "") {
             submitBtn.disabled = true;
             
+            if (!apiKeyInput.value.trim()) {
+                sandbox.innerHTML = `<span style="color:red;">Error: Please enter your Google AI Studio API key above before generating.</span>`;
+                submitBtn.disabled = false;
+                return;
+            }
+            
             if (targetTopic) {
-                sandbox.innerHTML = `<span class="loading-text">Consulting historical records for <strong>"${targetTopic}"</strong>...</span>`;
+                sandbox.innerHTML = `<span class="loading-text">Consulting historical records for <strong>"${targetTopic}"</strong>... (Waiting for Gemini 2.5 Flash)</span>`;
             } else {
-                sandbox.innerHTML = `<span class="loading-text">Brainstorming a bizarre, non-existent topic...</span>`;
+                sandbox.innerHTML = `<span class="loading-text">Brainstorming a bizarre, non-existent topic... (Waiting for Gemini 2.5 Flash)</span>`;
             }
 
             let selectedTopic = targetTopic;
 
             try {
-                await initOrResetSessions();
                 generationCount++;
 
                 // =======================================================
@@ -214,16 +188,16 @@
                 if (!selectedTopic) {
                     const shuffledNoise = massiveDictionary.sort(() => 0.5 - Math.random());
                     const entropyWords = shuffledNoise.slice(0, 12).join(", ");
-                    const randomSeed = Math.floor(Math.random() * 100000);
 
-                    let titlePrompt = `[SEMANTIC ENTROPY BUFFER: ${entropyWords}]\nInvent a brand new, formal encyclopedia topic title. Use the entropy buffer for abstract inspiration to make it utterly unique. Random variation hash token: ${randomSeed}.`;
+                    const titleSystemPrompt = `You are a creative brainstorming engine for Halupedia. Output ONLY ONE short title string for a fictional wiki article. It must sound highly bureaucratic, academic, or absurd.`;
+                    let titlePrompt = `[SEMANTIC ENTROPY BUFFER: ${entropyWords}]\nInvent a brand new, formal encyclopedia topic title. Use the entropy buffer for abstract inspiration to make it sound incredibly strange but historically authentic.`;
                     
                     if (previousTitles.length > 0) {
                         titlePrompt += `\nCRITICAL: This title MUST be completely different from these previous topics: ${previousTitles.join(" | ")}.`;
                     }
                     titlePrompt += `\nRESPOND WITH THE TITLE ONLY. No explanations.`;
 
-                    const rawTitle = await titleSession.prompt(titlePrompt);
+                    const rawTitle = await callGeminiAPI(titlePrompt, titleSystemPrompt, 0.9, 40);
                     
                     const titleLines = rawTitle.split('\n').filter(line => line.trim().length > 0);
                     let firstLine = titleLines[0] || "Unknown Topic";
@@ -231,7 +205,7 @@
                     selectedTopic = firstLine.replace(/["'#`\.*]/g, "").trim();
                     
                     previousTitles.push(selectedTopic);
-                    sandbox.innerHTML = `<span class="loading-text">Discovered Archive: <strong>"${selectedTopic}"</strong>.<br>Consulting historical records...</span>`;
+                    sandbox.innerHTML = `<span class="loading-text">Discovered Archive: <strong>"${selectedTopic}"</strong>.<br>Drafting full encyclopedia entry...</span>`;
                 }
 
                 // =======================================================
@@ -239,6 +213,7 @@
                 // =======================================================
                 const loreBuffer = buildLoreBuffer();
 
+                const articleSystemPrompt = `You are the sole author of Halupedia, an encyclopedia of things that do not exist. You write encyclopedia articles in a deadpan, matter-of-fact tone — the exact style of Wikipedia — about subjects that are completely ridiculous, absurd, or logically impossible.`;
                 let finalPrompt = `${loreBuffer}
 
 Write a 350-word encyclopedia entry for the topic: ${selectedTopic}.
@@ -255,23 +230,16 @@ CRITICAL RULES:
                     finalPrompt += `\n- Since the user clicked a link to arrive here, make sure this article naturally connects to the 'Currently Reading' topic in the lore buffer.`;
                 }
 
-                const stream = articleSession.promptStreaming(finalPrompt);
-                let textBuffer = "";
-                let htmlContent = "";
+                const rawArticleText = await callGeminiAPI(finalPrompt, articleSystemPrompt, 0.9, 50);
 
-                for await (const chunk of stream) {
-                    textBuffer += chunk;
-                    let cleanText = textBuffer.replace(/```(html|markdown)?/gi, '').replace(/```/g, '');
-                    cleanText = cleanText.replace(/([\.!?])\s*\n?\s*(>)/g, '$1\n\n$2');
-                    
-                    htmlContent = marked.parse(cleanText);
-                    
-                    // Turn AI's [[Funny Topic]] into a clickable link
-                    htmlContent = htmlContent.replace(/\[\[(.*?)\]\]/g, `<a href="#" class="wiki-link" onclick="openWikiPage('$1'); return false;">$1</a>`);
-                    
-                    sandbox.innerHTML = `<h1>${selectedTopic}</h1>` + htmlContent;
-                }
-
+                let cleanText = rawArticleText.replace(/```(html|markdown)?/gi, '').replace(/```/g, '');
+                cleanText = cleanText.replace(/([\.!?])\s*\n?\s*(>)/g, '$1\n\n$2');
+                
+                let htmlContent = marked.parse(cleanText);
+                
+                // Turn AI's [[Funny Topic]] into a clickable link
+                htmlContent = htmlContent.replace(/\[\[(.*?)\]\]/g, `<a href="#" class="wiki-link" onclick="openWikiPage('$1'); return false;">$1</a>`);
+                
                 // =======================================================
                 // STAGE 3: The Quote "Safety Net" & History Saving
                 // =======================================================
@@ -280,6 +248,7 @@ CRITICAL RULES:
                 } else {
                     htmlContent = htmlContent.replace(/<\/blockquote>/g, '<cite>— Historical Records Office</cite></blockquote>');
                 }
+                
                 sandbox.innerHTML = `<h1>${selectedTopic}</h1>` + htmlContent;
 
                 // Save to Browsing History for the next generation's Lore Buffer
@@ -288,19 +257,13 @@ CRITICAL RULES:
 
             } catch (err) {
                 console.error(err);
-                if (err.message.includes("quota") || err.message.includes("token") || err.message.includes("context") || err.message.includes("limit")) {
-                    sandbox.innerHTML = `<span class="loading-text" style="color:#b78103;">AI Memory full. Wiping historical archives and resetting... please click Generate again.</span>`;
-                    await initOrResetSessions(true);
-                } else {
-                    sandbox.innerHTML = `<span style="color:red;">Generation error: ${err.message}</span>`;
-                }
+                sandbox.innerHTML = `<span style="color:red;">Generation error: ${err.message}</span>`;
             } finally {
                 submitBtn.disabled = false;
             }
         }
 
         submitBtn.addEventListener('click', () => generateArticle(""));
-        window.addEventListener('DOMContentLoaded', checkAiAvailability);
     </script>
 </body>
 </html>
