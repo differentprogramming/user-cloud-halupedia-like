@@ -175,15 +175,18 @@
         }
 
         // ==============================================
-        // Google Gemini Request
+        // Google Gemini Request (Supports Streaming)
         // ==============================================
-        async function callGeminiAPI(prompt, systemPrompt, temperature, topK) {
+        async function callGeminiAPI(prompt, systemPrompt, temperature, topK, onUpdate = null) {
             const apiKey = apiKeyInput.value.trim();
             if (!apiKey) throw new Error("Please enter a Google AI Studio API Key.");
             
             localStorage.setItem('halupedia_api_key', apiKey);
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+            const isStreaming = !!onUpdate;
+            const endpoint = isStreaming ? "streamGenerateContent?alt=sse" : "generateContent";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:${endpoint}&key=${apiKey}`;
+            
             const requestBody = {
                 systemInstruction: { parts: [{ text: systemPrompt }] },
                 contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -197,18 +200,51 @@
             });
 
             if (!response.ok) {
-                const err = await response.json();
+                const err = await response.json().catch(() => ({}));
                 throw new Error(err.error?.message || "Google API Request Failed");
             }
 
-            const data = await response.json();
-            return data.candidates[0].content.parts[0].text;
+            if (!isStreaming) {
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
+            }
+
+            // Read the SSE Stream
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = "";
+            let buffer = "";
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // keep the incomplete line in the buffer
+
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (trimmedLine.startsWith('data: ')) {
+                        const dataStr = trimmedLine.substring(6).trim();
+                        if (!dataStr || dataStr === '[DONE]') continue;
+                        try {
+                            const parsed = JSON.parse(dataStr);
+                            const delta = parsed.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                            fullText += delta;
+                            onUpdate(fullText);
+                        } catch (e) {
+                            // ignore partial JSON
+                        }
+                    }
+                }
+            }
+            return fullText;
         }
 
         // ==============================================
-        // Local OpenAI-compatible Request (Jan / Open WebUI)
+        // Local OpenAI-compatible Request (Supports Streaming)
         // ==============================================
-        async function callLocalAPI(prompt, systemPrompt, temperature) {
+        async function callLocalAPI(prompt, systemPrompt, temperature, onUpdate = null) {
             const url = localUrlInput.value.trim();
             const model = localModelInput.value.trim() || "local-model";
             const localApiKey = localApiKeyInput.value.trim();
@@ -219,13 +255,16 @@
             localStorage.setItem('halupedia_local_model', model);
             localStorage.setItem('halupedia_local_api_key', localApiKey);
 
+            const isStreaming = !!onUpdate;
+
             const requestBody = {
                 model: model,
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: prompt }
                 ],
-                temperature: temperature
+                temperature: temperature,
+                stream: isStreaming
             };
             
             const headers = { 'Content-Type': 'application/json' };
@@ -244,13 +283,45 @@
                 throw new Error(err.error?.message || `Local API Error: ${response.status} ${response.statusText}`);
             }
 
-            const data = await response.json();
-            if (!data.choices || data.choices.length === 0) {
-                throw new Error("Local API returned an empty or invalid response.");
+            if (!isStreaming) {
+                const data = await response.json();
+                if (!data.choices || data.choices.length === 0) {
+                    throw new Error("Local API returned an empty or invalid response.");
+                }
+                return data.choices[0].message.content;
             }
-            return data.choices[0].message.content;
-        }
 
+            // Read the SSE Stream
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = "";
+            let buffer = "";
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // keep the incomplete line in the buffer
+
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (trimmedLine.startsWith('data: ')) {
+                        const dataStr = trimmedLine.substring(6).trim();
+                        if (dataStr === '[DONE]') continue;
+                        try {
+                            const parsed = JSON.parse(dataStr);
+                            const delta = parsed.choices?.[0]?.delta?.content || "";
+                            fullText += delta;
+                            onUpdate(fullText);
+                        } catch (e) {
+                            // ignore partial JSON
+                        }
+                    }
+                }
+            }
+            return fullText;
+        }
 
         function buildLoreBuffer() {
             if (browsingHistory.length === 0) return "";
@@ -312,7 +383,7 @@
 
                     let rawTitle;
                     if (useLocal) {
-                        rawTitle = await callLocalAPI(titlePrompt, titleSystemPrompt, 0.9);
+                        rawTitle = await callLocalAPI(titlePrompt, titleSystemPrompt, 0.9); // No stream for title
                     } else {
                         rawTitle = await callGeminiAPI(titlePrompt, titleSystemPrompt, 0.9, 40);
                     }
@@ -323,11 +394,13 @@
                     selectedTopic = firstLine.replace(/["'#`\.*]/g, "").trim();
                     
                     previousTitles.push(selectedTopic);
-                    sandbox.innerHTML = `<span class="loading-text">Discovered Archive: <strong>"${selectedTopic}"</strong>.<br>Drafting full encyclopedia entry...</span>`;
                 }
 
+                // Initial UI setup before streaming the article
+                sandbox.innerHTML = `<h1>${selectedTopic}</h1><span class="loading-text">Drafting full encyclopedia entry...</span>`;
+
                 // =======================================================
-                // STAGE 2: Article Generation
+                // STAGE 2: Article Generation (Streaming)
                 // =======================================================
                 const loreBuffer = buildLoreBuffer();
 
@@ -349,24 +422,32 @@ CRITICAL RULES:
                     finalPrompt += `\n- Since the user clicked a link to arrive here, make sure this article naturally connects to the 'Currently Reading' topic in the lore buffer.`;
                 }
 
-                let rawArticleText;
+                let rawArticleText = "";
+
+                // Stream Updater function - updates the UI as chunks arrive
+                const streamUpdater = (currentText) => {
+                    rawArticleText = currentText;
+                    let cleanText = currentText.replace(/```(html|markdown)?/gi, '').replace(/```/g, '');
+                    let htmlContent = marked.parse(cleanText);
+                    // Live-replace wiki links
+                    htmlContent = htmlContent.replace(/\[\[(.*?)\]\]/g, `<a href="#" class="wiki-link" onclick="openWikiPage('$1'); return false;">$1</a>`);
+                    sandbox.innerHTML = `<h1>${selectedTopic}</h1>` + htmlContent;
+                };
+
                 if (useLocal) {
-                    rawArticleText = await callLocalAPI(finalPrompt, articleSystemPrompt, 0.9);
+                    await callLocalAPI(finalPrompt, articleSystemPrompt, 0.9, streamUpdater);
                 } else {
-                    rawArticleText = await callGeminiAPI(finalPrompt, articleSystemPrompt, 0.9, 50);
+                    await callGeminiAPI(finalPrompt, articleSystemPrompt, 0.9, 50, streamUpdater);
                 }
 
+                // =======================================================
+                // STAGE 3: The Quote "Safety Net" & History Saving (Post-stream)
+                // =======================================================
                 let cleanText = rawArticleText.replace(/```(html|markdown)?/gi, '').replace(/```/g, '');
                 cleanText = cleanText.replace(/([\.!?])\s*\n?\s*(>)/g, '$1\n\n$2');
-                
                 let htmlContent = marked.parse(cleanText);
-                
-                // Turn AI's [[Funny Topic]] into a clickable link
                 htmlContent = htmlContent.replace(/\[\[(.*?)\]\]/g, `<a href="#" class="wiki-link" onclick="openWikiPage('$1'); return false;">$1</a>`);
                 
-                // =======================================================
-                // STAGE 3: The Quote "Safety Net" & History Saving
-                // =======================================================
                 if (!htmlContent.includes('<blockquote>')) {
                     htmlContent = htmlContent.replace(/<p>(.*?)<\/p>\s*$/, '<blockquote>$1<cite>— Historical Records Office</cite></blockquote>');
                 } else {
@@ -381,7 +462,6 @@ CRITICAL RULES:
 
             } catch (err) {
                 console.error(err);
-                // Handle local CORS/Network errors gracefully
                 if (err.message.includes("Failed to fetch")) {
                     sandbox.innerHTML = `<span style="color:red;">Network error: Could not connect to Local API. Is Jan/Open WebUI running on that URL? Are CORS settings allowing localhost?</span>`;
                 } else {
