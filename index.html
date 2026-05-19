@@ -20,13 +20,23 @@
         }
         h1.main-title { font-family: 'Georgia', serif; font-size: 2.2rem; margin-bottom: 5px; color: #000; }
         
+        .toggle-container {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: #e0e0e0;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
         .api-key-container { 
             margin-bottom: 25px; 
-            background: #e8f0fe; 
             padding: 15px; 
             border-radius: 6px; 
             border: 1px solid #d2e3fc; 
         }
+        #google-api-container { background: #e8f0fe; border-color: #d2e3fc; }
+        #local-api-container { background: #e6f7ff; border-color: #91d5ff; display: none; }
+
         .api-key-input { 
             width: 100%; 
             padding: 10px; 
@@ -55,7 +65,9 @@
         @media (prefers-color-scheme: dark) {
             body { background-color: #121212; color: #e0e0e0; }
             h1.main-title { color: #ffffff; }
-            .api-key-container { background: #1e2532; border-color: #3b4b6b; }
+            .toggle-container { background: #2a2a2a; color: #fff; }
+            #google-api-container { background: #1e2532; border-color: #3b4b6b; }
+            #local-api-container { background: #1a2a3a; border-color: #2b4a6b; }
             .api-key-input { background: #202124; color: #fff; border-color: #555; }
             #wiki-sandbox { background-color: #1e1e1e; border-color: #333; box-shadow: none; }
             #wiki-sandbox h1, #wiki-sandbox h2, #wiki-sandbox h3 { border-bottom-color: #333; }
@@ -72,11 +84,32 @@
 
     <h1 class="main-title">User-cloud Halupedia Generator</h1>
     
-    <div class="api-key-container">
+    <div class="toggle-container">
+        <label style="cursor: pointer;">
+            <input type="checkbox" id="use-local-toggle"> 
+            Use Local AI (Jan / Open WebUI) instead of Google Gemini
+        </label>
+    </div>
+
+    <!-- Google AI Studio Configuration -->
+    <div class="api-key-container" id="google-api-container">
         <label for="api-key-input" style="font-weight: bold;">Google AI Studio API Key</label>
         <br>
         <span style="font-size: 12px; color: #666;">Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a>. Stored locally in your browser.</span>
         <input type="password" id="api-key-input" class="api-key-input" placeholder="AIzaSy...">
+    </div>
+
+    <!-- Local AI Configuration -->
+    <div class="api-key-container" id="local-api-container">
+        <label for="local-url-input" style="font-weight: bold;">Local API URL</label>
+        <br>
+        <span style="font-size: 12px; color: #666;">Default for Jan is usually <code>http://127.0.0.1:1337/v1/chat/completions</code></span>
+        <input type="text" id="local-url-input" class="api-key-input" value="http://127.0.0.1:1337/v1/chat/completions">
+        <br><br>
+        <label for="local-model-input" style="font-weight: bold;">Model Name</label>
+        <br>
+        <span style="font-size: 12px; color: #666;">Enter the exact model name downloaded in Jan/Open WebUI.</span>
+        <input type="text" id="local-model-input" class="api-key-input" placeholder="e.g. llama3">
     </div>
 
     <div class="action-area">
@@ -86,7 +119,14 @@
     <div id="wiki-sandbox">Click the button above to have the AI invent an entirely new topic from scratch...</div>
 
     <script>
+        const useLocalToggle = document.getElementById('use-local-toggle');
+        const googleContainer = document.getElementById('google-api-container');
+        const localContainer = document.getElementById('local-api-container');
+
         const apiKeyInput = document.getElementById('api-key-input');
+        const localUrlInput = document.getElementById('local-url-input');
+        const localModelInput = document.getElementById('local-model-input');
+
         const submitBtn = document.getElementById('submit-btn');
         const sandbox = document.getElementById('wiki-sandbox');
 
@@ -94,18 +134,44 @@
         let previousTitles = [];
         let browsingHistory = []; 
 
-        // Load saved API key on startup
+        // Load saved preferences on startup
         window.addEventListener('DOMContentLoaded', () => {
             const savedKey = localStorage.getItem('halupedia_api_key');
             if (savedKey) apiKeyInput.value = savedKey;
+
+            const savedLocalUrl = localStorage.getItem('halupedia_local_url');
+            if (savedLocalUrl) localUrlInput.value = savedLocalUrl;
+
+            const savedLocalModel = localStorage.getItem('halupedia_local_model');
+            if (savedLocalModel) localModelInput.value = savedLocalModel;
+
+            const isLocal = localStorage.getItem('halupedia_use_local') === 'true';
+            useLocalToggle.checked = isLocal;
+            toggleApiContainers();
         });
 
-        // Wrapper function to call Gemini via REST API
+        useLocalToggle.addEventListener('change', () => {
+            localStorage.setItem('halupedia_use_local', useLocalToggle.checked);
+            toggleApiContainers();
+        });
+
+        function toggleApiContainers() {
+            if (useLocalToggle.checked) {
+                googleContainer.style.display = 'none';
+                localContainer.style.display = 'block';
+            } else {
+                googleContainer.style.display = 'block';
+                localContainer.style.display = 'none';
+            }
+        }
+
+        // ==============================================
+        // Google Gemini Request
+        // ==============================================
         async function callGeminiAPI(prompt, systemPrompt, temperature, topK) {
             const apiKey = apiKeyInput.value.trim();
             if (!apiKey) throw new Error("Please enter a Google AI Studio API Key.");
             
-            // Save key locally
             localStorage.setItem('halupedia_api_key', apiKey);
 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -123,12 +189,51 @@
 
             if (!response.ok) {
                 const err = await response.json();
-                throw new Error(err.error?.message || "API Request Failed");
+                throw new Error(err.error?.message || "Google API Request Failed");
             }
 
             const data = await response.json();
             return data.candidates[0].content.parts[0].text;
         }
+
+        // ==============================================
+        // Local OpenAI-compatible Request (Jan / Open WebUI)
+        // ==============================================
+        async function callLocalAPI(prompt, systemPrompt, temperature) {
+            const url = localUrlInput.value.trim();
+            const model = localModelInput.value.trim() || "local-model";
+            if (!url) throw new Error("Please enter your Local API URL.");
+
+            localStorage.setItem('halupedia_local_url', url);
+            localStorage.setItem('halupedia_local_model', model);
+
+            const requestBody = {
+                model: model,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: prompt }
+                ],
+                temperature: temperature
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error?.message || `Local API Error: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (!data.choices || data.choices.length === 0) {
+                throw new Error("Local API returned an empty or invalid response.");
+            }
+            return data.choices[0].message.content;
+        }
+
 
         function buildLoreBuffer() {
             if (browsingHistory.length === 0) return "";
@@ -152,17 +257,23 @@
 
         async function generateArticle(targetTopic = "") {
             submitBtn.disabled = true;
+            const useLocal = useLocalToggle.checked;
             
-            if (!apiKeyInput.value.trim()) {
+            if (!useLocal && !apiKeyInput.value.trim()) {
                 sandbox.innerHTML = `<span style="color:red;">Error: Please enter your Google AI Studio API key above before generating.</span>`;
+                submitBtn.disabled = false;
+                return;
+            }
+            if (useLocal && !localUrlInput.value.trim()) {
+                sandbox.innerHTML = `<span style="color:red;">Error: Please enter a valid Local API URL.</span>`;
                 submitBtn.disabled = false;
                 return;
             }
             
             if (targetTopic) {
-                sandbox.innerHTML = `<span class="loading-text">Consulting historical records for <strong>"${targetTopic}"</strong>... (Waiting for Gemini 2.5 Flash)</span>`;
+                sandbox.innerHTML = `<span class="loading-text">Consulting historical records for <strong>"${targetTopic}"</strong>... (Waiting for ${useLocal ? "Local AI" : "Gemini 2.5 Flash"})</span>`;
             } else {
-                sandbox.innerHTML = `<span class="loading-text">Brainstorming a bizarre, non-existent topic... (Waiting for Gemini 2.5 Flash)</span>`;
+                sandbox.innerHTML = `<span class="loading-text">Brainstorming a bizarre, non-existent topic... (Waiting for ${useLocal ? "Local AI" : "Gemini 2.5 Flash"})</span>`;
             }
 
             let selectedTopic = targetTopic;
@@ -182,7 +293,12 @@
                     }
                     titlePrompt += `\nRESPOND WITH THE TITLE ONLY. No explanations.`;
 
-                    const rawTitle = await callGeminiAPI(titlePrompt, titleSystemPrompt, 0.9, 40);
+                    let rawTitle;
+                    if (useLocal) {
+                        rawTitle = await callLocalAPI(titlePrompt, titleSystemPrompt, 0.9);
+                    } else {
+                        rawTitle = await callGeminiAPI(titlePrompt, titleSystemPrompt, 0.9, 40);
+                    }
                     
                     const titleLines = rawTitle.split('\n').filter(line => line.trim().length > 0);
                     let firstLine = titleLines[0] || "Unknown Topic";
@@ -215,7 +331,12 @@ CRITICAL RULES:
                     finalPrompt += `\n- Since the user clicked a link to arrive here, make sure this article naturally connects to the 'Currently Reading' topic in the lore buffer.`;
                 }
 
-                const rawArticleText = await callGeminiAPI(finalPrompt, articleSystemPrompt, 0.9, 50);
+                let rawArticleText;
+                if (useLocal) {
+                    rawArticleText = await callLocalAPI(finalPrompt, articleSystemPrompt, 0.9);
+                } else {
+                    rawArticleText = await callGeminiAPI(finalPrompt, articleSystemPrompt, 0.9, 50);
+                }
 
                 let cleanText = rawArticleText.replace(/```(html|markdown)?/gi, '').replace(/```/g, '');
                 cleanText = cleanText.replace(/([\.!?])\s*\n?\s*(>)/g, '$1\n\n$2');
@@ -242,7 +363,12 @@ CRITICAL RULES:
 
             } catch (err) {
                 console.error(err);
-                sandbox.innerHTML = `<span style="color:red;">Generation error: ${err.message}</span>`;
+                // Handle local CORS/Network errors gracefully
+                if (err.message.includes("Failed to fetch")) {
+                    sandbox.innerHTML = `<span style="color:red;">Network error: Could not connect to Local API. Is Jan/Open WebUI running on that URL? Are CORS settings allowing localhost?</span>`;
+                } else {
+                    sandbox.innerHTML = `<span style="color:red;">Generation error: ${err.message}</span>`;
+                }
             } finally {
                 submitBtn.disabled = false;
             }
