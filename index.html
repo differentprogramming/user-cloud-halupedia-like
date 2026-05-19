@@ -302,7 +302,7 @@
                 // STAGE 1: Topic Generation (Only if no target provided)
                 // =======================================================
                 if (!selectedTopic) {
-                    const titleSystemPrompt = `You are a creative brainstorming engine for Halupedia. Output ONLY ONE short title string for a fictional wiki article. It must sound highly bureaucratic, academic, or absurd.`;
+                    const titleSystemPrompt = `You are a creative brainstorming engine for Halupedia. Output ONLY ONE short title string for a fictional wiki article. It must sound highly bureaucratic, academic, or absurd. Do NOT output <thinking>, <thought>, or reasoning blocks.`;
                     let titlePrompt = `Invent a brand new, formal encyclopedia topic title that is incredibly strange but historically authentic.`;
                     
                     if (previousTitles.length > 0) {
@@ -331,7 +331,7 @@
                 // =======================================================
                 const loreBuffer = buildLoreBuffer();
 
-                const articleSystemPrompt = `You are the sole author of Halupedia, an encyclopedia of things that do not exist. You write encyclopedia articles in a deadpan, matter-of-fact tone — the exact style of Wikipedia — about subjects that are completely ridiculous, absurd, or logically impossible.`;
+                const articleSystemPrompt = `You are the sole author of Halupedia, an encyclopedia of things that do not exist. You write encyclopedia articles in a deadpan, matter-of-fact tone — the exact style of Wikipedia — about subjects that are completely ridiculous, absurd, or logically impossible. Do NOT output <thinking>, <thought>, or reasoning blocks.`;
                 let finalPrompt = `${loreBuffer}
 
 Write a 350-word encyclopedia entry for the topic: ${selectedTopic}.
@@ -340,7 +340,8 @@ CRITICAL RULES:
 1. Emulate Wikipedia's tone perfectly.
 2. Use Wikitext double-brackets to link to 3 or 4 other invented, bizarre encyclopedia articles (e.g., "This was heavily regulated by [[The Ministry of Slight Breezes]].")
 3. End the article with a quotation from a fictional academic, starting the line with the > symbol.
-4. Do NOT output markdown code blocks, lists, or bullet points. Use simple paragraphs and headers (##).`;
+4. Do NOT output markdown code blocks, lists, or bullet points. Use simple paragraphs and headers (##).
+5. ABSOLUTELY NO INTERNAL REASONING. Do NOT output <thinking>, <thought>, or <scratchpad> tags. Start writing the article text immediately.`;
 
                 if (generationCount > 1 && !targetTopic) {
                     finalPrompt += `\n- Ensure the concepts and structure are completely different from previous articles.`;
