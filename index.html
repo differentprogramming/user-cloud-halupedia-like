@@ -29,7 +29,7 @@
         }
 
         .api-key-container { 
-            margin-bottom: 25px; 
+            margin-bottom: 15px; 
             padding: 15px; 
             border-radius: 6px; 
             border: 1px solid #d2e3fc; 
@@ -47,10 +47,51 @@
             font-family: monospace;
         }
 
+        /* New styles for settings and inputs */
+        details.prompt-settings {
+            margin-bottom: 25px;
+            padding: 15px;
+            background: #e0e0e0;
+            border-radius: 6px;
+        }
+        details.prompt-settings summary {
+            font-weight: bold;
+            cursor: pointer;
+        }
+        textarea.system-prompt {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: inherit;
+            resize: vertical;
+            line-height: 1.4;
+        }
+
         .action-area { margin-bottom: 30px; }
-        .generate-btn { padding: 14px 28px; font-size: 16px; background-color: #3c4043; color: white; border: 1px solid #3c4043; border-radius: 4px; cursor: pointer; font-weight: 500; transition: background-color 0.2s; }
+        .custom-title-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .custom-title-input {
+            flex-grow: 1;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        
+        .generate-btn { padding: 12px 24px; font-size: 16px; background-color: #3c4043; color: white; border: 1px solid #3c4043; border-radius: 4px; cursor: pointer; font-weight: 500; transition: background-color 0.2s; white-space: nowrap; }
         .generate-btn:hover:not(:disabled) { background-color: #202124; }
         .generate-btn:disabled { background-color: #cccccc; border-color: #cccccc; cursor: not-allowed; }
+
+        .checkbox-area {
+            margin-top: 15px;
+            font-size: 0.95rem;
+        }
         
         #wiki-sandbox { background-color: #fff; border: 1px solid #a2a9b1; padding: 30px 40px; min-height: 400px; line-height: 1.6; box-shadow: 0 1px 4px rgba(0,0,0,0.05); transition: background-color 0.3s, border-color 0.3s; }
         #wiki-sandbox h1 { font-family: 'Georgia', serif; font-size: 1.8rem; border-bottom: 1px solid #a2a9b1; padding-bottom: 5px; margin-top: 0; margin-bottom: 20px; }
@@ -68,7 +109,9 @@
             .toggle-container { background: #2a2a2a; color: #fff; }
             #google-api-container { background: #1e2532; border-color: #3b4b6b; }
             #local-api-container { background: #1a2a3a; border-color: #2b4a6b; }
-            .api-key-input { background: #202124; color: #fff; border-color: #555; }
+            .api-key-input, .custom-title-input { background: #202124; color: #fff; border-color: #555; }
+            details.prompt-settings { background: #2a2a2a; }
+            textarea.system-prompt { background: #1e1e1e; color: #fff; border-color: #555; }
             #wiki-sandbox { background-color: #1e1e1e; border-color: #333; box-shadow: none; }
             #wiki-sandbox h1, #wiki-sandbox h2, #wiki-sandbox h3 { border-bottom-color: #333; }
             #wiki-sandbox blockquote { background: #2a2a2a; border-left-color: #444; }
@@ -117,8 +160,30 @@
         <input type="password" id="local-api-key-input" class="api-key-input" placeholder="Bearer token...">
     </div>
 
+    <!-- Collapsible System Prompt -->
+    <details class="prompt-settings">
+        <summary>Edit System Prompt (Advanced)</summary>
+        <p style="font-size: 12px; margin-top: 5px; margin-bottom: 0;">Adjust the core behavior and voice of the AI here. Changes take effect on the next generation.</p>
+        <textarea id="system-prompt-input" class="system-prompt" rows="5">You are the sole author of Halupedia, an encyclopedia of things that do not exist. You write encyclopedia articles in a deadpan, matter-of-fact tone — the exact style of Wikipedia — about subjects that are completely ridiculous, absurd, or logically impossible. Do NOT output <thinking>, <thought>, or reasoning blocks.</textarea>
+    </details>
+
     <div class="action-area">
-        <button id="submit-btn" class="generate-btn">Generate Random Article</button>
+        <!-- Custom Title Generation -->
+        <div class="custom-title-area">
+            <input type="text" id="custom-title-input" class="custom-title-input" placeholder="Enter a custom article title...">
+            <button id="custom-title-btn" class="generate-btn">Generate Article from Title</button>
+        </div>
+        
+        <!-- Random Generation -->
+        <button id="submit-btn" class="generate-btn" style="width: 100%;">Generate Random Article</button>
+
+        <!-- Clear History Toggle -->
+        <div class="checkbox-area">
+            <label style="cursor: pointer;">
+                <input type="checkbox" id="clear-history-checkbox"> 
+                <strong>Clear Lore Buffer on next generation</strong> (Ignore previous articles and start a fresh universe)
+            </label>
+        </div>
     </div>
 
     <div id="wiki-sandbox">Click the button above to have the AI invent an entirely new topic from scratch...</div>
@@ -133,7 +198,11 @@
         const localModelInput = document.getElementById('local-model-input');
         const localApiKeyInput = document.getElementById('local-api-key-input');
 
+        const systemPromptInput = document.getElementById('system-prompt-input');
+        const customTitleInput = document.getElementById('custom-title-input');
+        const customTitleBtn = document.getElementById('custom-title-btn');
         const submitBtn = document.getElementById('submit-btn');
+        const clearHistoryCheckbox = document.getElementById('clear-history-checkbox');
         const sandbox = document.getElementById('wiki-sandbox');
 
         let generationCount = 0;
@@ -154,9 +223,17 @@
             const savedLocalApiKey = localStorage.getItem('halupedia_local_api_key');
             if (savedLocalApiKey) localApiKeyInput.value = savedLocalApiKey;
 
+            const savedSystemPrompt = localStorage.getItem('halupedia_system_prompt');
+            if (savedSystemPrompt) systemPromptInput.value = savedSystemPrompt;
+
             const isLocal = localStorage.getItem('halupedia_use_local') === 'true';
             useLocalToggle.checked = isLocal;
             toggleApiContainers();
+        });
+
+        // Save system prompt changes locally
+        systemPromptInput.addEventListener('input', () => {
+            localStorage.setItem('halupedia_system_prompt', systemPromptInput.value);
         });
 
         useLocalToggle.addEventListener('change', () => {
@@ -345,17 +422,28 @@
 
         async function generateArticle(targetTopic = "") {
             submitBtn.disabled = true;
+            customTitleBtn.disabled = true;
+
             const useLocal = useLocalToggle.checked;
             
             if (!useLocal && !apiKeyInput.value.trim()) {
                 sandbox.innerHTML = `<span style="color:red;">Error: Please enter your Google AI Studio API key above before generating.</span>`;
                 submitBtn.disabled = false;
+                customTitleBtn.disabled = false;
                 return;
             }
             if (useLocal && !localUrlInput.value.trim()) {
                 sandbox.innerHTML = `<span style="color:red;">Error: Please enter a valid Local API URL.</span>`;
                 submitBtn.disabled = false;
+                customTitleBtn.disabled = false;
                 return;
+            }
+
+            // Handle Clear History Toggle
+            if (clearHistoryCheckbox.checked) {
+                browsingHistory = [];
+                previousTitles = [];
+                clearHistoryCheckbox.checked = false; // Uncheck after executing
             }
             
             if (targetTopic) {
@@ -367,15 +455,18 @@
             try {
                 generationCount++;
                 const loreBuffer = buildLoreBuffer();
-                const articleSystemPrompt = `You are the sole author of Halupedia, an encyclopedia of things that do not exist. You write encyclopedia articles in a deadpan, matter-of-fact tone — the exact style of Wikipedia — about subjects that are completely ridiculous, absurd, or logically impossible. Do NOT output <thinking>, <thought>, or reasoning blocks.`;
+                
+                // Get dynamic system prompt from the textarea
+                const articleSystemPrompt = systemPromptInput.value.trim();
+
                 let finalPrompt = "";
-                let generatedTitle = targetTopic; // Will be overwritten if targetTopic is empty
+                let generatedTitle = targetTopic;
 
                 // =======================================================
                 // Unified Generation (Single API Call)
                 // =======================================================
                 if (!targetTopic) {
-                    finalPrompt = `${loreBuffer}\n\nInvent a brand new, formal encyclopedia topic that is incredibly strange but historically authentic.\n\nCRITICAL RULES:\n1. The VERY FIRST LINE of your response MUST be the Title of the topic. No "Here is...", no bold tags. Just the raw title.\n2. The SECOND LINE MUST be blank.\n3. The REST of your response MUST be a 350-word encyclopedia entry for that topic.\n4. Emulate Wikipedia's tone perfectly.\n5. Use Wikitext double-brackets to link to 3 or 4 other invented, bizarre encyclopedia articles (e.g., "This was heavily regulated by [[The Ministry of Slight Breezes]].")\n6. End the article with a quotation from a fictional academic, starting the line with the > symbol.\n7. Do NOT output markdown code blocks, lists, or bullet points. Use simple paragraphs and headers (##).\n8. ABSOLUTELY NO INTERNAL REASONING. Start with the title immediately.`;
+                    finalPrompt = `${loreBuffer}\n\nInvent a brand new, formal encyclopedia topic that is incredibly strange but historically authentic.\n\nCRITICAL RULES:\n1. The VERY FIRST LINE of your response MUST be the Title of the topic. No "Here is...", no bold tags. Just the raw title.\n2. The SECOND LINE MUST be blank.\n3. The REST of your response MUST be a 350-word encyclopedia entry for that topic.\n4. Emulate Wikipedia's tone perfectly.\n5. Use Wikitext double-brackets to link to 3 or 4 other invented, bizarre encyclopedia articles.\n6. End the article with a quotation from a fictional academic, starting the line with the > symbol.\n7. Do NOT output markdown code blocks, lists, or bullet points. Use simple paragraphs and headers (##).\n8. ABSOLUTELY NO INTERNAL REASONING. Start with the title immediately.`;
                     
                     if (previousTitles.length > 0) {
                         finalPrompt += `\n- The topic MUST be completely different from these previous topics: ${previousTitles.join(" | ")}.`;
@@ -384,7 +475,7 @@
                     finalPrompt = `${loreBuffer}\n\nWrite a 350-word encyclopedia entry for the topic: ${targetTopic}.\n\nCRITICAL RULES:\n1. Emulate Wikipedia's tone perfectly.\n2. Use Wikitext double-brackets to link to 3 or 4 other invented, bizarre encyclopedia articles.\n3. End the article with a quotation from a fictional academic, starting the line with the > symbol.\n4. Do NOT output markdown code blocks, lists, or bullet points. Use simple paragraphs and headers (##).\n5. ABSOLUTELY NO INTERNAL REASONING. Do NOT output <thinking> tags. Start writing the article text immediately.`;
                     
                     if (browsingHistory.length > 0) {
-                        finalPrompt += `\n- Since the user clicked a link to arrive here, make sure this article naturally connects to the 'Currently Reading' topic in the lore buffer.`;
+                        finalPrompt += `\n- Since the user clicked a link or entered a title, make sure this article naturally connects to the 'Currently Reading' topic in the lore buffer if one exists.`;
                     }
                 }
 
@@ -398,23 +489,18 @@
                     let displayTitle = targetTopic;
                     let displayBody = cleanText;
 
-                    // If we didn't provide a topic, the AI is generating it on line 1
                     if (!targetTopic) {
                         const lines = cleanText.split('\n');
-                        // Grab line 1, strip markdown/cruft
                         displayTitle = (lines[0] || "").replace(/^(Title:|Topic:|\*\*Title:\*\*|Here is a title:|Sure!)\s*/i, '').replace(/["'#`\.*]/g, "").trim();
-                        // The rest is the body
                         displayBody = lines.slice(1).join('\n').trim();
                         generatedTitle = displayTitle; 
                     }
 
                     let htmlContent = marked.parse(displayBody || "...");
-                    // Live-replace wiki links
                     htmlContent = htmlContent.replace(/\[\[(.*?)\]\]/g, `<a href="#" class="wiki-link" onclick="openWikiPage('$1'); return false;">$1</a>`);
                     sandbox.innerHTML = `<h1>${displayTitle || "Discovering Archive..."}</h1>` + htmlContent;
                 };
 
-                // Trigger the Single Request
                 if (useLocal) {
                     await callLocalAPI(finalPrompt, articleSystemPrompt, 0.9, streamUpdater);
                 } else {
@@ -446,7 +532,6 @@
                 
                 sandbox.innerHTML = `<h1>${generatedTitle}</h1>` + htmlContent;
 
-                // Save to Browsing History
                 let plainText = htmlContent.replace(/<[^>]+>/g, ''); 
                 browsingHistory.push({ title: generatedTitle, text: plainText });
 
@@ -459,10 +544,28 @@
                 }
             } finally {
                 submitBtn.disabled = false;
+                customTitleBtn.disabled = false;
             }
         }
 
+        // Event listeners for buttons
         submitBtn.addEventListener('click', () => generateArticle(""));
+        
+        customTitleBtn.addEventListener('click', () => {
+            const title = customTitleInput.value.trim();
+            if (title) {
+                generateArticle(title);
+                customTitleInput.value = ''; // Clear the input box
+            }
+        });
+
+        // Allow pressing Enter in the custom title box to trigger generation
+        customTitleInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                customTitleBtn.click();
+            }
+        });
     </script>
 </body>
 </html>
